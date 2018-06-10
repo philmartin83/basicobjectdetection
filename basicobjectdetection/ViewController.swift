@@ -18,10 +18,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     var objectType : String = ""
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Do any additional setup after loading the view, typically from a nib.
-        
         launchAVCaptureSession()
-        
     }
     
     override func didReceiveMemoryWarning() {
@@ -103,9 +100,9 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         let  speech = AVSpeechSynthesizer()
         speech.delegate = self
         let myWords =  String.init(format: "The object found is %@", self.objectType)
-        let talkTomMe = AVSpeechUtterance(string:  myWords)
-        talkTomMe.rate = 0.3
-        speech.speak(talkTomMe)
+        let talkToMe = AVSpeechUtterance(string:  myWords)
+        talkToMe.rate = 0.3
+        speech.speak(talkToMe)
         
     }
     
