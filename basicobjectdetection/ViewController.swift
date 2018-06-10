@@ -10,104 +10,110 @@ import UIKit
 import AVKit
 import Vision
 
-class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate, AVSpeechSynthesizerDelegate {
+class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate, AVSpeechSynthesizerDelegate  {
     
     var btn = UIButton()
     var theCameraViewLayer = AVCaptureVideoPreviewLayer()
     var objectDetected : Bool = false
     var objectType : String = ""
+    let speech = AVSpeechSynthesizer()
+    
+    
+    let descriptionLabel : UILabel = {
+        let label = UILabel()
+        label.textAlignment = .center
+        label.backgroundColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
-        launchAVCaptureSession()
-    }
-    
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
-    }
-    
-    func launchAVCaptureSession()
-    {
-        let launchCapture = AVCaptureSession()
-        launchCapture.sessionPreset = .photo
-        guard let getTheCaptureDevice = AVCaptureDevice.default(for: .video) else { return }
-        guard let input = try? AVCaptureDeviceInput(device: getTheCaptureDevice) else { return }
-        launchCapture.addInput(input)
-        launchCapture.startRunning()
+
+        speech.delegate = self
+        let session = AVCaptureSession()
+        session.sessionPreset = .photo
         
-        theCameraViewLayer = AVCaptureVideoPreviewLayer(session: launchCapture)
-        view.layer.addSublayer(theCameraViewLayer)
-        theCameraViewLayer.frame = CGRect.init(origin: CGPoint.init(x: 0, y: 0) , size: CGSize.init(width: view.frame.width, height: view.frame.height - 100))
+        guard let captureDevice = AVCaptureDevice.default(for: .video) else { return }
+        guard let input = try? AVCaptureDeviceInput(device: captureDevice) else { return }
+        session.addInput(input)
         
-        searchObjectDetection(captureSession: launchCapture)
-    }
-    
-    func searchObjectDetection(captureSession : AVCaptureSession)
-    {
+         session.startRunning()
+        
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        view.layer.addSublayer(previewLayer)
+        previewLayer.frame = view.frame
+        
         let dataOutput = AVCaptureVideoDataOutput()
         dataOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "theQueue"))
-        captureSession.addOutput(dataOutput)
+        session.addOutput(dataOutput)
     }
     
-    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection)
+    func layoutDesciptionLabel()
     {
-        guard let thePixelBuffer: CVPixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {return}
-        
-        
-        guard let myModel = try? VNCoreMLModel(for: Resnet50().model) else { return }
-        let myRequest  = VNCoreMLRequest(model: myModel) { (finishedRequest, error) in
-            if (error != nil)
-            {
-                let badError = UIAlertController.init(title: "Error", message: "cannot detect the object", preferredStyle: UIAlertControllerStyle.alert)
-                self.present(badError, animated: true, completion: nil)
-            }
-            else
-            {
-                guard let result = finishedRequest.results as? [VNClassificationObservation] else {return}
+        view.addSubview(descriptionLabel)
+        descriptionLabel.topAnchor.constraint(equalTo: view.topAnchor).isActive = true
+        descriptionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor).isActive = true
+        descriptionLabel.heightAnchor.constraint(equalToConstant: 50).isActive = true
+    }
+    
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+
+        guard let pixelBuffer: CVPixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+    
+        guard let model = try? VNCoreMLModel(for: Resnet50().model) else { return }
+        let request = VNCoreMLRequest(model: model) { (finishedReq, err) in
+            
+            guard let results = finishedReq.results as? [VNClassificationObservation] else { return }
+            
+            guard let objectObservation = results.first else { return }
+            print(objectObservation.identifier, objectObservation.confidence)
+            DispatchQueue.main.async {
                 
-                guard let observation = result.first else {return}
-                let accuaracy = observation.confidence * 100
+                self.descriptionLabel.text = "\(objectObservation.identifier) \(objectObservation.confidence * 100)"
                 
-                if (accuaracy >= 90 && !self.objectDetected)
+                let accuarcy = objectObservation.confidence * 100
+                if(accuarcy >= 89 && !self.objectDetected)
                 {
+                    self.objectType = objectObservation.identifier
                     self.objectDetected = true
-                    self.objectType = observation.identifier;
                     self.displayButton()
                 }
+             
             }
+            
         }
         
-        try? VNImageRequestHandler(cvPixelBuffer: thePixelBuffer, options: [:]).perform([myRequest])
-        
+        try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([request])
     }
     
     func displayButton()
     {
-        btn.isHidden = false
         if(self.objectDetected)
         {
             let objectedRecognied = UIAlertController.init(title: "Object Found", message: "Object found press 'Describe Object' to confirm", preferredStyle: UIAlertControllerStyle.alert)
             objectedRecognied.addAction( UIAlertAction.init(title: "Describe Object", style: UIAlertActionStyle.default, handler: { (okAction) in
-                self.textToSpeachOvject()
+                self.textToSpeachObject()
             }))
             self.present(objectedRecognied, animated: true, completion: nil)
             
         }
         
     }
-    func textToSpeachOvject()
+    func textToSpeachObject()
     {
-        let  speech = AVSpeechSynthesizer()
-        speech.delegate = self
-        let myWords =  String.init(format: "The object found is %@", self.objectType)
+        let myWords = "The object found is \(self.objectType)"
         let talkToMe = AVSpeechUtterance(string:  myWords)
-        talkToMe.rate = 0.3
+        talkToMe.rate = 0.55
         speech.speak(talkToMe)
-        
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        perform(#selector(setDetectionToFalse), with: nil, afterDelay: 1.0)
     }
     
-    private func speechSynthesizer(synthesizer: AVSpeechSynthesizer, didFinishSpeechUtterance utterance: AVSpeechUtterance) {
-        
+    @objc func setDetectionToFalse()
+    {
         self.objectDetected = false
     }
 }
